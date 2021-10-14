@@ -1,0 +1,28 @@
+digraph Tree {
+node [shape=box, style="filled", color="black"] ;
+0 [label="drought_code <= 19.91\ngini = 0.499\nsamples = 153\nvalue = [74, 79]\nclass = fire", fillcolor="#f2f9fd"] ;
+1 [label="gini = 0.0\nsamples = 56\nvalue = [56, 0]\nclass = no fire", fillcolor="#e58139"] ;
+0 -> 1 [labeldistance=2.5, labelangle=45, headlabel="True"] ;
+2 [label="buildup_index <= 14.375\ngini = 0.302\nsamples = 97\nvalue = [18, 79]\nclass = fire", fillcolor="#66b3eb"] ;
+0 -> 2 [labeldistance=2.5, labelangle=-45, headlabel="False"] ;
+3 [label="drought_code <= 39.14\ngini = 0.484\nsamples = 34\nvalue = [14, 20]\nclass = fire", fillcolor="#c4e2f7"] ;
+2 -> 3 ;
+4 [label="humidity <= 72.5\ngini = 0.436\nsamples = 28\nvalue = [9, 19]\nclass = fire", fillcolor="#97cbf1"] ;
+3 -> 4 ;
+5 [label="gini = 0.32\nsamples = 20\nvalue = [4, 16]\nclass = fire", fillcolor="#6ab6ec"] ;
+4 -> 5 ;
+6 [label="gini = 0.469\nsamples = 8\nvalue = [5, 3]\nclass = no fire", fillcolor="#f5cdb0"] ;
+4 -> 6 ;
+7 [label="gini = 0.278\nsamples = 6\nvalue = [5, 1]\nclass = no fire", fillcolor="#ea9a61"] ;
+3 -> 7 ;
+8 [label="drought_code <= 74.155\ngini = 0.119\nsamples = 63\nvalue = [4, 59]\nclass = fire", fillcolor="#46a4e7"] ;
+2 -> 8 ;
+9 [label="gini = 0.0\nsamples = 27\nvalue = [0, 27]\nclass = fire", fillcolor="#399de5"] ;
+8 -> 9 ;
+10 [label="buildup_index <= 24.955\ngini = 0.198\nsamples = 36\nvalue = [4, 32]\nclass = fire", fillcolor="#52a9e8"] ;
+8 -> 10 ;
+11 [label="gini = 0.5\nsamples = 6\nvalue = [3, 3]\nclass = no fire", fillcolor="#ffffff"] ;
+10 -> 11 ;
+12 [label="gini = 0.064\nsamples = 30\nvalue = [1, 29]\nclass = fire", fillcolor="#40a0e6"] ;
+10 -> 12 ;
+}
