@@ -1,10 +1,14 @@
 import pandas as pd
 import numpy as np
-
-
+import pdb
+from sklearn.metrics import accuracy_score 
+from sklearn.utils import shuffle
 from math import log2
 import itertools 
 from sklearn.model_selection import train_test_split
+import random
+from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
+from sklearn.utils.multiclass import unique_labels
 
 class e_Support_Vector_Machine:
     """ This is a Support Vector Machine algorithm I've kindly called the emotional Support Vector Machine. 
@@ -34,11 +38,15 @@ class e_Support_Vector_Machine:
     classes_ : ndarray, shape (n_classes,)
         The classes seen at :meth:`fit`.
     """
-    def __init__(self, happy_class='no fire'):
-        self.happy_class = happy_class
+    def __init__(self, learning_rate, n_iter, tolerance, C):
+        self.learning_rate = learning_rate
+        self.n_iter = n_iter
+        self.tolerance = tolerance
+        self.C = C
+        #self.happy=happy
 
 
-    def fit(self, X, y, C=0):
+    def fit(self, X, y):
         """
         Training an SVM is an optimisation problem where the objective is to maximise the distance between a hyperplane and the closest datapoint for any weight and bias (W, b).
         The equation for a seperating hyperplane is (W).(X) + b = 0 where W is a weight vector, X is the input vector and b is a bias term.
@@ -79,16 +87,26 @@ class e_Support_Vector_Machine:
             Returns self.
         """
         # Check that X and y have correct shape
-        X, y = check_X_y(X, y)
+        X, y = check_X_y(X, y, accept_sparse=True)
         # Store the classes seen during fit
         self.classes_ = unique_labels(y)
 
         self.X_ = X
         self.y_ = y
 
+        
 
-        # Return the classifier
-        return self
+        # Initialise the weight vector with length the same as the number of features being analysed and give each coefficient a value of 1.
+        W = np.ones(X.shape[1])  
+
+        # For each iteration, calculate the weights.
+        for step in range(self.n_iter):
+            # For each X value evaluate the gradient at that point with the given weights and subtract the gradient*learning rate from the weights to refine the W vector
+            for index, value in enumerate(X):
+                eta = learning_schedule(step*index)
+                W = W-self.learning_rate*gradient(W, value,  y[index], self.C)
+        self.W = W
+        return(self.W)
 
     def predict(self, X):
         """ A reference implementation of a prediction for a classifier.
@@ -105,20 +123,27 @@ class e_Support_Vector_Machine:
             seen during fit.
         """
         # Check is fit had been called
-        check_is_fitted(self, ['X_', 'y_'])
+        #check_is_fitted(self, ['X_', 'y_'])
 
         # Input validation
         X = check_array(X)
+        output = []
+        for i in X:
+            if np.dot(self.W,i)>0:
+                output.append(1)
+            else:
+                output.append(-1)
+        return(output)
+    
+    
+def learning_schedule(t):
+    # random initialisation for t0, user defined t1
+    t0, t1 = 5, 50
+    return t0/(t+t1)
 
-        closest = np.argmin(euclidean_distances(X, self.X_), axis=1)
-        return self.y_[closest]
 
 
-    def f1_score(self, y_test, y_train):
-        pass
-
-
-
+    
 def information_gain(df, target, columns):
     """
     Calculate the information gain for all the columns to be presented at the feature selection screen. 
@@ -171,8 +196,8 @@ def feature_selection(df):
     
     """
     print(df.dtypes)
-    #target='yes'
-    target = input('Pick the target variable')
+    target='yes'
+    #target = input('Pick the target variable')
     
     df[target] = [x.strip() for x in df[target]]
     df[target] = df[target].replace({'no':-1, 'yes':1})
@@ -185,44 +210,44 @@ def feature_selection(df):
     info_cols= info_cols.merge(ig, on='Column').sort_values("Information Gain" ,ascending=False)
     print("Information gain calculated for bins either side of mean values for each feature")
     print(info_cols)
-    #cols = "rainfall, humidity, buildup_index, drought_code"
-    cols = input("Please enter the desired columns for anaylsis: ")
+    cols = "rainfall, humidity, buildup_index, drought_code"
+    #cols = input("Please enter the desired columns for anaylsis: ")
     cols = [x.strip() for x in cols.split(',')]
     return target, cols
 
-
 def normalise(df, column):
     """
-    Range normalisation - Function to normalise the data in the datasets column if needed.
+    Function to normalise the data in the datasets columns - this has a negative impact on the models performance 
     """
-    return (df[column]-min(df[column]))/(max(df[column]) - min(df[column]))
-
+    return 2*(df[column]-min(df[column]))/(max(df[column]) - min(df[column]))-1
+    
 
 def cost_function(W, X, y, C):
     """
-    The cost funciton is described by the equation below and will be evaluated to determine 
-    if the model has achieved an acceptably low cost function before the number of iterations has been reached.
+    The cost funciton is described by the equation below and will be evaluated to determine if the model has achieved an acceptably low cost function before the number of iterations has been reached.
     J= (||W||^2)/2  +  (C/N)*SUMALL(maxvalue(0, 1-yi*W*xi)) 
     """
     for i in range(len(X)):
         # Evaluate for the left side of the '+'. Dot product of a vector on itself returns the magnitude
-        lhs = (1/2) * np.dot(W,W)#**0.5
+        lhs = (1/2) * np.dot(W.T,W)#**0.5
         
         # Evaluate for right hand side of the '+'
-        hyper_plane_distance = np.max([0,1-(y[i]*np.dot(X[i],W))])
+        hyper_plane_distance = np.max([0,1-(y[i]*np.dot(X[i],W.T))])
         N = len(X)
         rhs = (C/N)*np.sum(hyper_plane_distance)
         return (lhs+rhs)
 
 
-def gradient_desc(W, X, y, C):
+
+
+def gradient(W, X, y, C):
     '''
-    Calculate the gradient at a point for given values of W, Xi, yi and return the value for the SVM to evaluate the next values for W.
+    Calculate the hyperplane distance at a point for given values of W, Xi, yi and return the value for the SVM to evaluate the next values for W.
     '''
     
     grad = np.zeros(len(W))
     # Calculate distance to the hyperplane for W, Xi, yi 
-    distance = np.max([0, 1 - y * np.dot(W,X)])
+    distance = np.max([0, 1 - y * np.dot(W.T,X)])
     
     # If the max value of the above is 0 then the point is a support vector and the weights are insightful else decrease the weights by C(yi*Xi)
     if distance == 0:
@@ -230,19 +255,6 @@ def gradient_desc(W, X, y, C):
     else:
         grad = W - (C * y * X)
     return grad
-
-
-def svm(X, y, learning_rate, n_iter, tolerance, C):
-    # Initialise the weight vector with length the same as the number of features being analysed and give each coefficient a value of 1.
-    W = np.ones(X.shape[1])  
-    
-    # For each iteration, calculate the weights.
-    for step in range(n_iter):
-        # For each X value evaluate the gradient at that point with the given weights and subtract the gradient*learning rate from the weights to refine the W vector
-        for index, val in enumerate(X):
-            W = W-learning_rate*gradient_desc(W, val,  y[index], C)
-    return(W)
-
 
 
 if __name__ == '__main__':
@@ -257,5 +269,10 @@ if __name__ == '__main__':
     # The b value from the hyperplane equation will be evaluated at the same time as W so it makes sense to add a feature to the dataset of value 1 to act as the b ceofficient.
     X_train = np.hstack([X_train, np.ones(X_train.shape[0]).reshape(-1,1)])
     model = svm(X_, y_, 1e-4, 100, 1, 0.5)
+
+
+    # Instantiate my SVM object and use gridsearch to select the optimum hyperparameters
+    
+    my_clf = e_Support_Vector_Machine(learning_rate= 1e-3, n_iter = 10000, tolerance = 0.001, C=1)
 
     
