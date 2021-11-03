@@ -1,9 +1,10 @@
 import pandas as pd
 import numpy as np
 import pdb
-from sklearn.metrics import accuracy_score 
+from sklearn.metrics import accuracy_score, f1_score
 from sklearn.utils import shuffle
 from math import log2
+from sklearn.svm import SVC
 import itertools 
 from sklearn.model_selection import train_test_split
 import random
@@ -103,7 +104,6 @@ class e_Support_Vector_Machine:
         for step in range(self.n_iter):
             # For each X value evaluate the gradient at that point with the given weights and subtract the gradient*learning rate from the weights to refine the W vector
             for index, value in enumerate(X):
-                eta = learning_schedule(step*index)
                 W = W-self.learning_rate*gradient(W, value,  y[index], self.C)
         self.W = W
         return(self.W)
@@ -129,21 +129,13 @@ class e_Support_Vector_Machine:
         X = check_array(X)
         output = []
         for i in X:
-            if np.dot(self.W,i)>0:
+            if np.dot(self.W.T,i)>0:
                 output.append(1)
             else:
                 output.append(-1)
         return(output)
     
-    
-def learning_schedule(t):
-    # random initialisation for t0, user defined t1
-    t0, t1 = 5, 50
-    return t0/(t+t1)
-
-
-
-    
+   
 def information_gain(df, target, columns):
     """
     Calculate the information gain for all the columns to be presented at the feature selection screen. 
@@ -195,9 +187,10 @@ def feature_selection(df):
         - this is not useful in the case of categorical data but the user should know that, this is just to assist the feature selection process
     
     """
+    print("\n")
     print(df.dtypes)
-    target='yes'
-    #target = input('Pick the target variable')
+    #target='yes'
+    target = input('Pick the target variable: ')
     
     df[target] = [x.strip() for x in df[target]]
     df[target] = df[target].replace({'no':-1, 'yes':1})
@@ -208,16 +201,17 @@ def feature_selection(df):
     info_cols.reset_index(inplace=True)
     info_cols = info_cols.rename(columns={'index':'Column', 0:'Data Type'})
     info_cols= info_cols.merge(ig, on='Column').sort_values("Information Gain" ,ascending=False)
+    print("\n")
     print("Information gain calculated for bins either side of mean values for each feature")
     print(info_cols)
-    cols = "rainfall, humidity, buildup_index, drought_code"
-    #cols = input("Please enter the desired columns for anaylsis: ")
+    #cols = "rainfall, humidity, buildup_index, drought_code"
+    cols = input("Please enter the desired columns for anaylsis (use a comma seperate the features): ")
     cols = [x.strip() for x in cols.split(',')]
     return target, cols
 
 def normalise(df, column):
     """
-    Function to normalise the data in the datasets columns - this has a negative impact on the models performance 
+    Function to normalise the data in the datasets columns - this has a negative impact on the models performance but included because was covered in lectures and to show work done.
     """
     return 2*(df[column]-min(df[column]))/(max(df[column]) - min(df[column]))-1
     
@@ -257,22 +251,98 @@ def gradient(W, X, y, C):
     return grad
 
 
+
+
+def cross_val(clf, X, y, n_folds):
+    
+    """
+    SK Learns cross_val_score was not working with my implimentation of the SVM so the below code shuffles and splits the dataset into 9/10 and 1/10 for training and validation. 
+    The first j elements are taken for validation and the remainder are training. Once the first j items have been used for validaiton they are concatenated onto the end of the training set and the next j elements are taken from the top of the training set.
+    """
+    X,y = shuffle(X,y)
+    output_scores=[]
+    print("\n")
+    for i in range(n_folds):
+        index_slicer = len(X)//n_folds
+        X_val, y_val = X[ :index_slicer ], y[ : index_slicer]
+        X_train, y_train = X[index_slicer: ], y[index_slicer: ]
+        
+        # To iterate through the folds of the cross validation, append the first j elements to the end of the array and then slice them off the start.
+        # By always treating the first j elements as the validation set and the remainder as the training set, I can do n-fold CV without adapting my e_Support_Vector_machine class to accecpt the sklearn implimentation.
+
+        X, y =np.concatenate((X_train,X_val)),np.concatenate((y_train,y_val))
+        #X, y = X[index_slicer: ], y[index_slicer :] 
+        
+        #pdb.set_trace()
+        
+        clf.fit(X_train, y_train)
+        clf_predicts = clf.predict(X_val)
+        f1 = f1_score(y_val, clf_predicts)
+        print(f'Iteration: {i}.  F1 score: {f1}')
+        output_scores.append(f1)
+    print(f'\nMean F1 is: {np.mean(output_scores)}')
+
+
+def tp_fp(actual, predicions):
+    tp=0
+    tf=0
+    for i in range(len(actual)):
+        if actual[i]==predicions[i]==1:
+            tp+=1
+        elif (actual[i]==1) & (predicions[i]==0):
+            fp+=1
+    return tp,fp
+
+
+
 if __name__ == '__main__':
     df = pd.read_csv("../Data/wildfires.txt", delimiter='\t')
 
     target, cols = feature_selection(df)
     X_train, X_test, y_train, y_test = train_test_split(df[cols], df[target], test_size=0.3, random_state=10)
+
     dataset = [X_train, X_test, y_train, y_test]
     for i in dataset:
         i.reset_index(inplace=True, drop=True)
 
     # The b value from the hyperplane equation will be evaluated at the same time as W so it makes sense to add a feature to the dataset of value 1 to act as the b ceofficient.
-    X_train = np.hstack([X_train, np.ones(X_train.shape[0]).reshape(-1,1)])
-    model = svm(X_, y_, 1e-4, 100, 1, 0.5)
+    #X_train = np.hstack([X_train, np.ones(X_train.shape[0]).reshape(-1,1)])
+    #X_test = np.hstack([X_test, np.ones(X_test.shape[0]).reshape(-1,1)])
 
 
     # Instantiate my SVM object and use gridsearch to select the optimum hyperparameters
     
-    my_clf = e_Support_Vector_Machine(learning_rate= 1e-3, n_iter = 10000, tolerance = 0.001, C=1)
+    my_svm = e_Support_Vector_Machine(learning_rate= 1e-3, n_iter = 1000, tolerance = 0.001, C=0.05)
+
+    # 10 fold cross validation
+    print("\nStarting 10 fold cross validation using my SVM:")
+    cross_val(my_svm, X_train, y_train, 10)
+
+    # Fit the model to the training data
+    my_svm.fit(X_train, y_train)
+
+    # Create predicitons with the model
+    my_y_predictions = my_svm.predict(X_test)
+    my_svm_score = f1_score(y_test, my_y_predictions)
 
     
+    # Compare to Sci-kit learns implimentation
+    svm = SVC()
+    print("\nStarting 10 fold cross validation using Sci-kit learn SVM:")
+    cross_val(svm, X_train, y_train, 10)
+    skl_svm = svm.fit(X_train, y_train)
+
+    skl_y_predicitons = skl_svm.predict(X_test)
+    skl_svm_score = f1_score(y_test, skl_y_predicitons)
+
+    print(f"\nMy SVM F1 score: {my_svm_score}. Sci-kit Learn SVM F1 score {skl_svm_score}")
+
+
+    output = str(list(zip(y_test,my_y_predictions)))
+    with open('Output.txt', 'w') as f:
+        f.writelines(output)
+        
+    f.close()
+    print("\nOutput written to Output.txt. Format is [(y_test_0, y_prediciton_0),...,(y_test_n, y_prediciton_n)]")
+
+    print("\nAssignment Complete")
