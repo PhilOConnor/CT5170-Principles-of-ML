@@ -11,15 +11,9 @@ import random
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 from sklearn.utils.multiclass import unique_labels
 
-class e_Support_Vector_Machine:
-    """ This is a Support Vector Machine algorithm I've kindly called the emotional Support Vector Machine. 
-    This can be used to for binary classification into 'happy' and 'sad' classes depending on the context of the target variable
-    (in the case of the assignment, a fire is a 'sad' outcome) - emijis in the relevent plots will support this
-
-    There are also variables named after some of my friends dotted throughout this where I feel appropriate eg.:
-    
-    'julian_stress' - will be used inplace of C to tune the size of the margin between the support vector and decision boundary. 
-        Low stress would give us a wide margin, giving the system high confidence in its predictions
+class Support_Vector_Machine(BaseEstimator):
+    """ This is my implimentation of a Support Vector Machine. 
+    This can be used to for binary classification into positive and negative classes.
 
     I am using the sci-kit learn project template as the structure for this class.
     
@@ -27,8 +21,11 @@ class e_Support_Vector_Machine:
 
     Parameters
     ----------
-    happy_class : str, default='no fire'
-        A parameter used during plotting to 
+    learning_rate : A parameter used to multiple by the cost gradient when iterating to control the step size.
+    n_iter : Determines how many iterations the gradient will be calculated until it meets an accectable tolerance 
+    tolerance :Once the previous_cost-new_cost is within the range new_cost-tolerance the model will stop fitting and return the weights W
+    C : Regularisation hyperparameter used to control the 'softness' of the margin
+    lam : lambda value for regularisation in the cost function to penalise high values for W
 
     Attributes
     ----------
@@ -39,13 +36,13 @@ class e_Support_Vector_Machine:
     classes_ : ndarray, shape (n_classes,)
         The classes seen at :meth:`fit`.
     """
-    def __init__(self, learning_rate, n_iter, tolerance, C):
+    def __init__(self, learning_rate=100e-6, n_iter=1e+3, tolerance=10e-3 , C=50e-3, lam=0.5, verbose=False):
         self.learning_rate = learning_rate
         self.n_iter = n_iter
         self.tolerance = tolerance
         self.C = C
-        #self.happy=happy
-
+        self.lam=lam
+        self.verbose = verbose
 
     def fit(self, X, y):
         """
@@ -77,15 +74,12 @@ class e_Support_Vector_Machine:
 
         Parameters
         ----------
-        X : array-like, shape (n_samples, n_features)
-            The training input samples.
-        y : array-like, shape (n_samples,)
-            The target values. An array of int.
+        X : The training input samples.
+        y : The target values. An array of int.
 
         Returns
         -------
-        self : object
-            Returns self.
+        self : Returns self.W 
         """
         # Check that X and y have correct shape
         X, y = check_X_y(X, y, accept_sparse=True)
@@ -94,8 +88,6 @@ class e_Support_Vector_Machine:
 
         self.X_ = X
         self.y_ = y
-
-        
 
         # Initialise the weight vector with length the same as the number of features being analysed and give each coefficient a value of 1.
         W = np.ones(X.shape[1])  
@@ -109,19 +101,17 @@ class e_Support_Vector_Machine:
         return(self.W)
 
     def predict(self, X):
-        """ A reference implementation of a prediction for a classifier.
+        """ 
+        Calculate the dot product of transpose(W) and Xi. If the result is a positive number then assign it the positive class, vice versa for the negative class
 
         Parameters
         ----------
-        X : array-like, shape (n_samples, n_features)
-            The input samples.
+        X : The input samples.
 
         Returns
         -------
-        y : ndarray, shape (n_samples,)
-            The label for each sample is the label of the closest sample
-            seen during fit.
-        """
+        y : The label for each sample either 1 or -1 depending on the sign of the dot product of W.T and Xi
+         """
         # Check is fit had been called
         #check_is_fitted(self, ['X_', 'y_'])
 
@@ -140,6 +130,20 @@ def information_gain(df, target, columns):
     """
     Calculate the information gain for all the columns to be presented at the feature selection screen. 
     Mean value will be used to bucket the values.
+
+    Parameters
+    ----------
+    df : The input dataframe.
+    target : The chosen target variable.
+    columns : The chosen independant variables
+
+    Returns
+    -------
+    df_output: datafame, shape (n_columns, 3) where columns are:
+    Column : Column of the dataframe
+    Mean Value : mean value of the independant variable
+    Information Gain: Information Gain given by the variable binned above and below the mean variable value. 
+
     """
     df_output = pd.DataFrame()
     
@@ -184,7 +188,19 @@ def feature_selection(df):
     Allows user input to pick the dependant and independant variables. 
     Once the dependant variable is chosen the information gain for the independant variables is calculated to help the user pick out useful features. 
     To calculate information gain variables were binned according to the feature mean value 
-        - this is not useful in the case of categorical data but the user should know that, this is just to assist the feature selection process
+        - this is not useful in the case of categorical data but the user should know that, this is just to assist the feature selection process.
+
+    Parameters
+    ----------
+    df : The input dataframe.
+    
+    Returns
+    -------
+    df_output: datafame, shape (n_columns, 3) where columns are:
+    Column : Column of the dataframe
+    Data Type: Column showing the dtype of the independant variables
+    Mean Value : mean value of the independant variable
+    Information Gain: Information Gain given by the variable binned above and below the mean variable value. 
     
     """
     print("\n")
@@ -211,93 +227,159 @@ def feature_selection(df):
 
 def normalise(df, column):
     """
-    Function to normalise the data in the datasets columns - this has a negative impact on the models performance but included because was covered in lectures and to show work done.
+    Function to normalise the data in the datasets columns - 
+    -1, 1 normalising is done through applying 2 * (x-min(x) / (max(x)-min(x)
+    This has a negative impact on the models performance but included because was covered in lectures and to show work done.
+    
+    Parameters
+    ----------
+    df : The input dataframe.
+
+    column : Column of the dataframe to be normalised
+
+    Returns
+    -------
+    Normlised series
+
     """
     return 2*(df[column]-min(df[column]))/(max(df[column]) - min(df[column]))-1
     
 
-def cost_function(W, X, y, C):
+def cost_function(W, X, y, C, lam):
     """
-    The cost funciton is described by the equation below and will be evaluated to determine if the model has achieved an acceptably low cost function before the number of iterations has been reached.
-    J= (||W||^2)/2  +  (C/N)*SUMALL(maxvalue(0, 1-yi*W*xi)) 
+    The cost funciton is described by the equation below and will be evaluated to determine if the model has achieved an acceptably 
+    low cost function before the number of iterations has been reached.
+    A complexity penalty has been added too to force the model to favour low weight values in W
+    
+    J(W) = emperical_cost(W) + lambdaComplexity(W)
+
+    J(W)= 1/2(W.T*W)  +  (C/N)*SUMALL(maxvalue(0, 1-yi*W*xi)) + lambda*Complexity(|W|)
+
+
+    Parameters
+    ----------
+    W : Stores the current weights of the model
+    X : Xi values for the given point
+    y : dependant variable for Xi
+    C: regularisation hyper parameter for tuning the soft margin strength
+    lam: regularisation hyper parameter for penalising large W values
+    
+
+    Returns
+    -------
+    computed cost of the resulting W values for a given Xi
+    
     """
     for i in range(len(X)):
-        # Evaluate for the left side of the '+'. Dot product of a vector on itself returns the magnitude
-        lhs = (1/2) * np.dot(W.T,W)#**0.5
         
-        # Evaluate for right hand side of the '+'
-        hyper_plane_distance = np.max([0,1-(y[i]*np.dot(X[i],W.T))])
         N = len(X)
-        rhs = (C/N)*np.sum(hyper_plane_distance)
-        return (lhs+rhs)
+        # Evaluate for the left side of the '+'. Dot product of a vector on itself returns the magnitude
+        hyper_plane_distance = np.max([0,1-(y[i]*np.dot(X[i],W.T))])
+
+        emperical_cost = (1/2) * np.dot(W.T,W) + (C/N)*np.sum(hyper_plane_distance)
+        complexity = lam*np.linalg.norm(W)
+        return (emperical_cost+complexity)
 
 
 
 
 def gradient(W, X, y, C):
     '''
-    Calculate the hyperplane distance at a point for given values of W, Xi, yi and return the value for the SVM to evaluate the next values for W.
+    Calculate the hinge loss at a point for given values of W, Xi, yi and return the value for the SVM to evaluate the next values for W if HL!=0.
+    
+    Parameters
+    ----------
+    W :1D numpy array, shape (n_features)
+            Stores the current weights of the model
+    X : Xi values for the given point
+    y : dependant variable for Xi
+    C: regularisation hyper parameter for tuning the soft margin strength
+  
+
+    Returns
+    -------
+    grad: New set of weights to be used in the next iteration of the model
+
     '''
     
     grad = np.zeros(len(W))
-    # Calculate distance to the hyperplane for W, Xi, yi 
-    distance = np.max([0, 1 - y * np.dot(W.T,X)])
+    # Calculate hinge loss the point at  Xi, yi using W. If less than 0,  assign 0.
+    hl = np.max([0, 1 - y * np.dot(W.T,X)])
     
-    # If the max value of the above is 0 then the point is a support vector and the weights are insightful else decrease the weights by C(yi*Xi)
-    if distance == 0:
+    # If the max value of the point is 0 then loss is minimised for thie W, return it to the model
+    if hl == 0:
         grad = W
     else:
+        # HL has not been minimised yet, return this W to the model to be iterated over next time
         grad = W - (C * y * X)
     return grad
 
 
 
 
-def cross_val(clf, X, y, n_folds):
+def cross_val(clf, X_, y_, n_iter):
     
     """
-    SK Learns cross_val_score was not working with my implimentation of the SVM so the below code shuffles and splits the dataset into 9/10 and 1/10 for training and validation. 
-    The first j elements are taken for validation and the remainder are training. Once the first j items have been used for validaiton they are concatenated onto the end of the training set and the next j elements are taken from the top of the training set.
+    SK Learns cross_val_score was not working with my implimentation of the SVM so the below code shuffles and splits the dataset into 2/3 and 1/3 for training and validation. 
+    For every step in n_iter, the validation set will iterate through the 3 folds and a model will be fitted on the training data and evaluated on the validation set.
+    The first 1/3 elements are taken for validation and the remainder are training. 
+
+    Once the first 1/3 items have been used for validaiton they are concatenated onto the end of the training set and these first 1/3 elements are removed from the top of the training set.
+    In the next loop a fresh 1/3 of the dataset will be used for vlalidaiton.
+
+    Drawbacks of this function is a lack of stratified sampling - Some validation sets may have an unrepresentative quantity of a particular class. 
+    While not ideal, this is a known draw back and can be lived with.
+    
+    Parameters
+    ----------
+    clf : the chosen classifier - must be compatible with the sci-kit learn API for fit() and predict()
+    X : X values 
+    y : y values
+    n_iter: how many iterations are needed
+  
+
+    Returns
+    -------
+    Nothing
+
+    Will print out the iteraion, validaion fold and f1 score for each model being evaluated. A mean F1 score is calculated at the end.
+
     """
-    X,y = shuffle(X,y)
+    
     output_scores=[]
-    print("\n")
-    for i in range(n_folds):
-        index_slicer = len(X)//n_folds
-        X_val, y_val = X[ :index_slicer ], y[ : index_slicer]
-        X_train, y_train = X[index_slicer: ], y[index_slicer: ]
-        
-        # To iterate through the folds of the cross validation, append the first j elements to the end of the array and then slice them off the start.
-        # By always treating the first j elements as the validation set and the remainder as the training set, I can do n-fold CV without adapting my e_Support_Vector_machine class to accecpt the sklearn implimentation.
+    
+    for step in range(n_iter):
+        # Shuffle the dataset every step in the iteration
+        X,y = shuffle(X_,y_)
+        # For each fold in the iteraion
+        for fold in range(3):
+            # Take the top 1/3 of the dataset for validation, rest for training
+            index_slicer = len(X)//3
+            X_val, y_val = X[ :index_slicer ], y[ : index_slicer]
+            X_train, y_train = X[index_slicer: ], y[index_slicer: ]
 
-        X, y =np.concatenate((X_train,X_val)),np.concatenate((y_train,y_val))
-        #X, y = X[index_slicer: ], y[index_slicer :] 
-        
-        #pdb.set_trace()
-        
-        clf.fit(X_train, y_train)
-        clf_predicts = clf.predict(X_val)
-        f1 = f1_score(y_val, clf_predicts)
-        print(f'Iteration: {i}.  F1 score: {f1}')
-        output_scores.append(f1)
-    print(f'\nMean F1 is: {np.mean(output_scores)}')
+            # Append the first 1/3elements to the end of the array and then slice them off the start.
+            # By always treating the first j elements as the validation set and the remainder as the training set, 
+            # I can do n-fold CV without adapting my Support_Vector_machine class to work with sci kit learns cv.
 
+            X, y =np.concatenate((X_train,X_val)),np.concatenate((y_train,y_val))
+            #pdb.set_trace()
 
-def tp_fp(actual, predicions):
-    tp=0
-    tf=0
-    for i in range(len(actual)):
-        if actual[i]==predicions[i]==1:
-            tp+=1
-        elif (actual[i]==1) & (predicions[i]==0):
-            fp+=1
-    return tp,fp
-
+            clf.fit(X_train, y_train)
+            clf_predicts = clf.predict(X_val)
+            f1 = f1_score(y_val, clf_predicts)
+            print(f'Iteration: {step}. Fold: {fold}  F1 score: {f1}')
+            output_scores.append(f1)
+    #pdb.set_trace()
+    print(f'Mean F1 is: {np.mean(output_scores)}')
 
 
 if __name__ == '__main__':
+
+    # Read in the dataset
     df = pd.read_csv("../Data/wildfires.txt", delimiter='\t')
 
+    # Give the user an option to chose target variable and desired features
     target, cols = feature_selection(df)
     X_train, X_test, y_train, y_test = train_test_split(df[cols], df[target], test_size=0.3, random_state=10)
 
@@ -305,14 +387,15 @@ if __name__ == '__main__':
     for i in dataset:
         i.reset_index(inplace=True, drop=True)
 
-    # The b value from the hyperplane equation will be evaluated at the same time as W so it makes sense to add a feature to the dataset of value 1 to act as the b ceofficient.
-    #X_train = np.hstack([X_train, np.ones(X_train.shape[0]).reshape(-1,1)])
-    #X_test = np.hstack([X_test, np.ones(X_test.shape[0]).reshape(-1,1)])
+    # The b value from the hyperplane equation will be evaluated at the same time as W 
+    # so it makes sense to add a feature to the dataset of value 1 to act as the b.
+    X_train = np.hstack([X_train, np.ones(X_train.shape[0]).reshape(-1,1)])
+    X_test = np.hstack([X_test, np.ones(X_test.shape[0]).reshape(-1,1)])
 
 
-    # Instantiate my SVM object and use gridsearch to select the optimum hyperparameters
-    
-    my_svm = e_Support_Vector_Machine(learning_rate= 1e-3, n_iter = 1000, tolerance = 0.001, C=0.05)
+    # Instantiate my SVM object.
+
+    my_svm = Support_Vector_Machine(learning_rate= 1e-3, n_iter = 1000, tolerance = 0.001, C=0.05)
 
     # 10 fold cross validation
     print("\nStarting 10 fold cross validation using my SVM:")
@@ -335,7 +418,7 @@ if __name__ == '__main__':
     skl_y_predicitons = skl_svm.predict(X_test)
     skl_svm_score = f1_score(y_test, skl_y_predicitons)
 
-    print(f"\nMy SVM F1 score: {my_svm_score}. Sci-kit Learn SVM F1 score {skl_svm_score}")
+    print(f"\nMy SVM F1 score: {np.round(my_svm_score,2)}. Sci-kit Learn SVM F1 score {np.round(skl_svm_score,2)}")
 
 
     output = str(list(zip(y_test,my_y_predictions)))
