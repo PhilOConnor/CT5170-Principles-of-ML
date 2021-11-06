@@ -1,20 +1,19 @@
 import pandas as pd
+from sklearn.base import BaseEstimator
 import numpy as np
-import matplotlib.pyplot as plt
 import pdb
-from sklearn.metrics import accuracy_score, f1_score
-from sklearn.decomposition import PCA
+from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 from sklearn.utils import shuffle
 from math import log2
 from sklearn.svm import SVC
 import itertools 
 from sklearn.model_selection import train_test_split
 import random
+import seaborn as sns
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 from sklearn.utils.multiclass import unique_labels
-from sklearn.base import BaseEstimator
-import seaborn as sns
-import pylab
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
 
 class Support_Vector_Machine(BaseEstimator):
     """ This is my implimentation of a Support Vector Machine. 
@@ -41,13 +40,14 @@ class Support_Vector_Machine(BaseEstimator):
     classes_ : ndarray, shape (n_classes,)
         The classes seen at :meth:`fit`.
     """
-    def __init__(self, learning_rate=100e-6, n_iter=5e+3, tolerance=1e-3 , C=20e-3, lam=0.5, verbose=False):
+    def __init__(self, learning_rate=100e-6, n_iter=1e+3, tolerance=10e-3 , C=50e-3, lam=0.5, verbose=False):
         self.learning_rate = learning_rate
         self.n_iter = n_iter
         self.tolerance = tolerance
         self.C = C
         self.lam=lam
-        self.verbose = verbose
+        self.verbose = verbose        
+
 
     def fit(self, X, y):
         """
@@ -98,6 +98,7 @@ class Support_Vector_Machine(BaseEstimator):
         W = np.ones(X.shape[1])  
         residuals=[]
         prev_cost=np.inf
+
         # For each iteration, calculate the weights.
         for step in range(self.n_iter):
             # For each X value evaluate the gradient at that point with the given weights and subtract the gradient*learning rate from the weights to refine the W vector
@@ -105,8 +106,7 @@ class Support_Vector_Machine(BaseEstimator):
                 W = W-self.learning_rate*gradient(W, value,  y[index], self.C) 
                 cost = cost_function(W,X, y,self.C, self.lam)
                 residuals.append(cost)
-                # Adding in /1.5 for tolerance for plotting to show continued downwards trend - Not really needed as part of the SVM as it would continue to converge - convex problem
-                if abs(prev_cost-cost) < self.tolerance/1.1:
+                if abs(prev_cost-cost) < self.tolerance:
                     self.W = W
                     self.residuals=residuals
                     return(self.W)
@@ -237,8 +237,8 @@ def feature_selection(df):
     print("\n")
     print("Information gain calculated for bins either side of mean values for each feature")
     print(info_cols)
-    #cols = "rainfall, humidity, buildup_index, drought_code"
-    cols = input("Please enter the desired columns for anaylsis (use a comma seperate the features): ")
+    cols = "buildup_index, rainfall, drought_code, temp, humidity"
+    #cols = input("Please enter the desired columns for anaylsis (use a comma seperate the features): ")
     cols = [x.strip() for x in cols.split(',')]
     return target, cols
 
@@ -292,7 +292,6 @@ def cost_function(W, X, y, C, lam):
         N = len(X)
         # Evaluate for the left side of the '+'. Dot product of a vector on itself returns the magnitude
         hyper_plane_distance = np.max([0,1-(y[i]*np.dot(X[i],W.T))])
-
         emperical_cost = (1/2) * np.dot(W.T,W) + (C/N)*np.sum(hyper_plane_distance)
         complexity = lam*np.linalg.norm(W)
         return (emperical_cost+complexity)
@@ -405,25 +404,28 @@ if __name__ == '__main__':
     for i in dataset:
         i.reset_index(inplace=True, drop=True)
 
-    # The b value from the hyperplane equation will be evaluated at the same time as W 
-    # so it makes sense to add a feature to the dataset of value 1 to act as the b.
-    X_train = np.hstack([X_train, np.ones(X_train.shape[0]).reshape(-1,1)])
-    X_test = np.hstack([X_test, np.ones(X_test.shape[0]).reshape(-1,1)])
+    
 
     # Using PCA convert to a 2 dimensional dataset - this will be used to plot and how the support vectors once the model is fitted
     pca = PCA(n_components=2)
     X2D = pca.fit_transform(X_train)
     X2D_test = pca.transform(X_test)
 
+    # The b value from the hyperplane equation will be evaluated at the same time as W 
+    # so it makes sense to add a feature to the dataset of value 1 to act as the b.
+    X2D = np.hstack([X2D, np.ones(X2D.shape[0]).reshape(-1,1)])
+    X2D_test = np.hstack([X2D_test, np.ones(X2D_test.shape[0]).reshape(-1,1)])
+
 
     # Instantiate my SVM object.
 
-    my_svm = Support_Vector_Machine(C=0.001, lam=0.001, learning_rate=0.01, n_iter=1000, tolerance=1e-6, verbose=True)
+    # Using a low n_iter value for the cross validation as n_iter=10000 takes very long. This is just to demonstrate the capacility
+    my_svm = Support_Vector_Machine(C=0.01, lam=0.1, learning_rate=0.01, n_iter=100, tolerance=1e-6, verbose=True)
 
     # 10 fold cross validation
     print("\nStarting 10 fold cross validation using my SVM:")
-    cross_val(my_svm, X2D, y_train, 10)
-
+    cross_val(my_svm, X2D, y_train, 1)
+    my_svm = Support_Vector_Machine(C=0.01, lam=0.1, learning_rate=0.01, n_iter=10000, tolerance=1e-6, verbose=True)
     # Fit the model to the training data
     my_svm.fit(X2D, y_train)
 
@@ -434,9 +436,10 @@ if __name__ == '__main__':
     
     
     # Compare to Sci-kit learns implimentation
-    svm = SVC()
+    svm = SVC(kernel='linear')
     print("\nStarting 10 fold cross validation using Sci-kit learn SVM:")
-    cross_val(svm, X2D, y_train, 10)
+    cross_val(svm, X2D, y_train, 1)
+    svm = SVC(kernel='linear')
     skl_svm = svm.fit(X2D, y_train)
 
     skl_y_predicitons = skl_svm.predict(X2D_test)
@@ -444,6 +447,12 @@ if __name__ == '__main__':
 
     print(f"\nMy SVM F1 score: {np.round(my_svm_score,2)}. Sci-kit Learn SVM F1 score {np.round(skl_svm_score,2)}")
 
+    print("Confusion matrices for both SVM classifiers is below\n")
+    print("My SVM classifier:")
+    print(pd.DataFrame(confusion_matrix(y_test, my_y_predictions)))
+
+    print("\nSci-kit learn SVM:")
+    print(pd.DataFrame(confusion_matrix(y_test, skl_y_predicitons)))
     print("\nOutput written to Output.txt. Format is [(y_test_0, y_prediciton_0),...,(y_test_n, y_prediciton_n)]")
     output = str(list(zip(y_test,my_y_predictions)))
     with open('Output.txt', 'w') as f:
@@ -469,37 +478,33 @@ if __name__ == '__main__':
     x1 = [np.round(i[0],3) for i in X2D_test]
     x2 = [np.round(i[1],3) for i in X2D_test]
     df = pd.DataFrame(data={'x1':x1, 'x2':x2, 'y_actual':y_test, 'y_pred':my_y_predictions})
+    df_skl = pd.DataFrame(data={'x1':x1, 'x2':x2, 'y_actual':y_test, 'y_pred':skl_y_predicitons})
 
-    # create a range of x1 and x2 values to iterate over to plot the decision boundary where (W).(Xi) =0 (intercept term dropped during PCA for lack of variance)
-    x1_range = np.arange(min(x1), max(x1), .05)
-    x2_range = np.arange(min(x2), max(x2), .05)
+    x_points = np.linspace(min(x1), max(x1))    # generating x-points from -1 to 1
+    
+    # Calculating the y values for the decision boundary created by my SVM implimentation
+    my_svm_db_y = -(my_svm.W[0] / my_svm.W[1]) * x_points -my_svm.W[2] / my_svm.W[1]
+
+    # Calculating the y values for the decision boundary created by the sci-kit learn SVM implimentation
+    skl_svm_db_y = -(skl_svm.coef_[0][0]/skl_svm.coef_[0][1]) * x_points - skl_svm.intercept_[0]/skl_svm.coef_[0][1]  # getting corresponding y-points# Plotting a red hyperplane
+    
+    fig, axes = plt.subplots(1, 2, figsize=(20,10))
+
+    my_svm_plot = sns.scatterplot(ax=axes[0], data=df, x='x1', y='x2',  hue='y_actual', style='y_pred')
+    my_svm_plot = sns.lineplot(ax=axes[0],x=x_points, y=my_svm_db_y, color='y', linestyle='-', label="DB")
+    my_svm_plot.set(xlim=(-50, 50), ylim=(-125, 50), title="My SVM decision Boundary")
 
 
-    decision_boundary_, pos_marg_, neg_marg_= [], [], []
+    #snsplot.figure.savefig("../Output/scatterplo4t.png")
 
-    # Iterate through all the possible values of x1 and x2 and define the support vectors and decision boundaries
-    for i,j in itertools.product(x1_range,x2_range):
-        dot_prod = np.round(np.dot([i, j], my_svm.W),3)
+    #plt.figure(figsize=(10, 8))# Plotting our two-features-space
+    skl_svm_plot = sns.scatterplot(ax=axes[1], data=df_skl, x='x1', y='x2', hue='y_actual', style='y_pred')
+    skl_svm_plot = sns.lineplot(ax=axes[1],x=x_points, y=skl_svm_db_y, color='y',label="DB")
+    skl_svm_plot.set(xlim=(-50, 50), ylim=(-125, 50), title="SKL SVM decision Boundary");
 
-        if dot_prod==0.00:
-            decision_boundary_.append([i, j])
-        # In case some points are not exact matches, allow a small tolerance
-        elif (dot_prod >=.9900) &( dot_prod <=1.0100):
-            pos_marg_.append([i, j])
-        elif (dot_prod <=-.9900) &( dot_prod >=-1.0100):
-            neg_marg_.append([i, j])
-        else:
-            pass
+    #fig.savefig("../Output/scatterplot_comparison.png")
 
-     
-    decision_boundary = pd.DataFrame(data=decision_boundary_, columns=['x1', 'x2'])
-    pos_marg= pd.DataFrame(data=pos_marg_, columns=['x1', 'x2'])
-    neg_marg= pd.DataFrame(data=neg_marg_, columns=['x1', 'x2'])
 
-    sns.scatterplot(data=df, x='x1', y='x2',  hue='y_actual', style='y_pred')
-    snsplot = sns.lineplot(data=decision_boundary, x='x1', y='x2', color='y', linestyle='-')
-    snsplot = sns.lineplot(data=pos_marg, x='x1', y='x2', color='k' )
-    snsplot = sns.lineplot(data=neg_marg, x='x1', y='x2', color='k')
     plt.show()
 
 
